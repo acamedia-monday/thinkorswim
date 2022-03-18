@@ -7,13 +7,13 @@ from scipy.stats import norm
 
 class Pricer():
     opt = {'t':dt.date(2022,6,17),'r':.01,'vol':.3,'csize':1,'cval':114.213,'margin':5732.86}
-    trade = {'dir':'buy','stop':20,'pl':0.0}
+    trade = {'dir':'sell','stop':20,'expos':-100000.0}
     bc = np.busdaycalendar(holidays=['2022-01-07','2022-02-23','2022-03-08','2022-05-02','2022-05-09','2022-11-04'])
     size = None
     ladder = None
     
     # Function returns both dirty and clean prices of the OFZ 26233 issue.
-    def get_bond_price(my=.20):
+    def get_bond_price(self, yld=.20):
         bond = pd.DataFrame({'date':['2022-02-02','2022-08-03','2023-02-01','2023-08-02','2024-01-31','2024-07-31',
                                      '2025-01-29','2025-07-30','2026-01-28','2026-07-29','2027-01-27','2027-07-28',
                                      '2028-01-26','2028-07-26','2029-01-24','2029-07-25','2030-01-23','2030-07-24',
@@ -31,7 +31,7 @@ class Pricer():
         bond.iloc[bond.count()[0]-1,1] = bond.iloc[bond.count()[0]-1,1]+bond_par
         for i in bond.index: bond.loc[i,'date'] = (i.date()-px_date).days/365
         bond['date'] = bond['date'].astype(float)
-        bond['discounted'] = bond['flow']*np.power(1+my,-bond['date'])
+        bond['discounted'] = bond['flow']*np.power(1+yld,-bond['date'])
         print('Gross bond price is {gross}'.format(gross=bond['discounted'].sum()))
         print('Clean bond price is {clean}'.format(clean=bond['discounted'].sum()-accrued))
 
@@ -50,7 +50,7 @@ class Pricer():
                                 busdaycal=self.bc)
         t = np.busday_count(f_date.strftime('%Y-%m-%d'), self.opt['t'].strftime('%Y-%m-%d'),
                             busdaycal=self.bc)/wdays
-        d1 = np.log(np.array(stock)/stock[-1])+(self.opt['r']+self.opt['vol']**2/2)*t
+        d1 = np.log(np.array(self.ladder['stock'])/strike)+(self.opt['r']+self.opt['vol']**2/2)*t
         self.ladder['delta'] = norm.cdf(d1/(self.opt['vol']*np.sqrt(t)))
         if strike>stock:
             if self.trade['dir'] == 'sell': self.ladder['delta'] = -self.ladder['delta']
@@ -74,4 +74,15 @@ class Pricer():
         self.ladder.loc[self.ladder['delta']<0,'stop'] = self.ladder['stock']+self.trade['stop']
         self.ladder['loss'] = self.ladder['stop']*self.ladder['cumsize']*self.opt['csize']*self.opt['cval']
         self.ladder['loss'] = self.ladder['loss'].round(decimals=5)
-        self.ladder['loss'] = self.laddder['loss']-self.ladder['cumval']
+        self.ladder['loss'] = self.ladder['loss']-self.ladder['cumval']
+        self.ladder['margin'] = -abs(self.ladder['cumsize'])*self.opt['margin']
+        self.ladder['expos'] = self.ladder['loss']+self.ladder['margin']
+        
+    def pricer(self):
+        multi = 1.0
+        multi_p = 1.0
+        epsi = .01
+        approx = True
+        proxy_p = 0.0
+        self.get_greeks(stock=1.09, strike=1.05)
+        self.get_ladder(multi)
